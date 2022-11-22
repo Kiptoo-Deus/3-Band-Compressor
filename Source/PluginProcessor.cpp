@@ -33,6 +33,9 @@ _3BandCompressorAudioProcessor::_3BandCompressorAudioProcessor()
 
     ratio = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("Ratio"));
     jassert(ratio != nullptr);
+
+    bypassed = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter("Bypassed"));
+    jassert(bypassed != nullptr);
 }
 
 
@@ -172,6 +175,8 @@ void _3BandCompressorAudioProcessor::processBlock (juce::AudioBuffer<float>& buf
    auto block = juce::dsp::AudioBlock<float>(buffer);
    auto context = juce::dsp::ProcessContextReplacing<float>(block);
 
+   context.isBypassed = bypassed->get();
+
    compressor.process(context);
 }
 
@@ -214,7 +219,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout _3BandCompressorAudioProcess
     using namespace juce;
 
     layout.add(std::make_unique < AudioParameterFloat>("Threshold", "Threshold", NormalisableRange<float>(-60,  12, 1, 1), 0));
-
+    
     auto attackReleaseRange = NormalisableRange<float>(5, 500, 1, 1);
     layout.add(std::make_unique < AudioParameterFloat>("Attack", "Attack", attackReleaseRange, 50));
     layout.add(std::make_unique < AudioParameterFloat>("Release", "Release", attackReleaseRange, 250));
@@ -225,7 +230,7 @@ juce:StringArray sa;
     }
 
     layout.add(std::make_unique<AudioParameterChoice>("Ratio", "Ratio", sa, 3));
-
+    layout.add(std::make_unique<AudioParameterBool>("Bypassed", "Bypassed", false));
     return layout;
 }
 //==============================================================================
