@@ -8,47 +8,42 @@
 
 #pragma once
 
+/*
+GUI RoadMap:
+ 1) Global Controls (x-over sliders, gain sliders) DONE
+ 2) Main Band Controls (attack, release, threshold, ratio) DONE
+ 3) add solo/mute/bypass buttons DONE
+ 4) Band Select Functionality DONE
+ 5) Band Select Buttons reflect the Solo/Mute/Bypass state DONE
+ 6) Custom Look and Feel for Sliders and Toggle Buttons. DONE
+ 7) Spectrum Analyzer Overview DONE
+ 8) Data Structures for Spectrum Analyzer. DONE
+ 9) Fifo usage in pluginProcessor::processBlock DONE
+ 10) implementation of the analyzer rendering pre-computed paths. DONE
+ 11) Drawing crossovers on top of the Analyzer Plot DONE
+ 12) Drawing gain reduction on top of the analyzer DONE
+ 13) Analyzer Bypass DONE
+ 14) Global Bypass button DONE
+ 
+ 
+ */
+
 #include <JuceHeader.h>
-struct  CompressorBand
-{
-    juce::AudioParameterFloat* attack{ nullptr };
-    juce::AudioParameterFloat* release{ nullptr };
-    juce::AudioParameterFloat* threshold{ nullptr };
-    juce::AudioParameterChoice* ratio{ nullptr };
-    juce::AudioParameterBool* bypassed{ nullptr };
+#include "DSP/CompressorBand.h"
+#include "DSP/SingleChannelSampleFifo.h"
 
-    void prepare(const juce::dsp::ProcessSpec& spec)
-    {
-        compressor.prepare(spec);
-    }
-    void updateCompressorSettings()
-    {
-        compressor.setAttack(attack->get());
-        compressor.setRelease(release->get());
-        compressor.setThreshold(threshold->get());
-        compressor.setRatio(ratio->getCurrentChoiceName().getFloatValue());
-    }
-    void process(juce::AudioBuffer<float>& buffer)
-    {
-        auto block = juce::dsp::AudioBlock<float>(buffer);
-        auto context = juce::dsp::ProcessContextReplacing<float>(block);
 
-        context.isBypassed = bypassed->get();
 
-        compressor.process(context);
-     }
-private:
-    juce::dsp::Compressor<float> compressor;
-};
+
 //==============================================================================
 /**
 */
-class _3BandCompressorAudioProcessor  : public juce::AudioProcessor
+class SimpleMBCompAudioProcessor  : public juce::AudioProcessor
 {
 public:
     //==============================================================================
-    _3BandCompressorAudioProcessor();
-    ~_3BandCompressorAudioProcessor() override;
+    SimpleMBCompAudioProcessor();
+    ~SimpleMBCompAudioProcessor() override;
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -85,13 +80,53 @@ public:
 
     using APVTS = juce::AudioProcessorValueTreeState;
     static APVTS::ParameterLayout createParameterLayout();
+    
+    APVTS apvts {*this, nullptr, "Parameters", createParameterLayout() };
+    
+    using BlockType = juce::AudioBuffer<float>;
+    SingleChannelSampleFifo<BlockType> leftChannelFifo { Channel::Left };
+    SingleChannelSampleFifo<BlockType> rightChannelFifo { Channel::Right };
 
-    APVTS apvts{ *this, nullptr, "Parameters", createParameterLayout() };
-
-
+    std::array<CompressorBand, 3> compressors;
+    CompressorBand& lowBandComp = compressors[0];
+    CompressorBand& midBandComp = compressors[1];
+    CompressorBand& highBandComp = compressors[2];
 private:
     
-    CompressorBand compressor;
+    using Filter = juce::dsp::LinkwitzRileyFilter<float>;
+    //      fc0     fc1
+    Filter  LP1,    AP2,
+            HP1,    LP2,
+                    HP2;
+    
+//    Filter invAP1, invAP2;
+//    juce::AudioBuffer<float> invAPBuffer;
+    
+    juce::AudioParameterFloat* lowMidCrossover { nullptr };
+    juce::AudioParameterFloat* midHighCrossover { nullptr };
+    
+    std::array<juce::AudioBuffer<float>, 3> filterBuffers;
+    
+    juce::dsp::Gain<float> inputGain, outputGain;
+    juce::AudioParameterFloat* inputGainParam { nullptr };
+    juce::AudioParameterFloat* outputGainParam { nullptr };
+    
+    template<typename T, typename U>
+    void applyGain(T& buffer, U& dsp)
+    {
+        auto block = juce::dsp::AudioBlock<float>(buffer);
+        auto ctx = juce::dsp::ProcessContextReplacing<float>(block);
+        dsp.process(ctx);
+    }
+    
+    void updateState();
+    
+    void splitBands(const juce::AudioBuffer<float>& inputBuffer);
+    
+#if USE_TEST_OSC
+    juce::dsp::Oscillator<float> osc;
+    juce::dsp::Gain<float> gain;
+#endif
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3BandCompressorAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SimpleMBCompAudioProcessor)
 };
